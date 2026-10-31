@@ -36,12 +36,10 @@ The action uses an installed `guarani` CLI when available and otherwise calls th
 | `profile` | No | `pull-request` | Profile defined in `guarani.yml`. |
 | `repo` | No | `${{ github.repository }}` | Repository in `owner/name` format. |
 | `ref` | No | `${{ github.ref }}` | Git ref to verify. |
-| `report` | No | `github` | Requested report target: `github`, `gitlab` or `markdown`. See compatibility note below. |
+| `report` | No | `github` | Accepted for compatibility; external reports are not published. |
 | `api_url` | No | `https://api.guarani-llc.com/v1` | REST API base URL. |
 
 Outputs are `id`, `verdict` and `findings_count` after a completed verification. The token is sent to the configured API URL. HTTPS is required except for a local reference server.
-
-**Report compatibility:** the current reference CLI gives `--report` precedence over `--json`, so `--report ... --json` does not return the full verification object needed for the action outputs. This action invokes the CLI with `--json` without `--report` and supplies the selected `ref` and API URL. The reference CLI waits for completion before emitting JSON and does not include a `status` field in that JSON. If a CLI result includes `status`, this action requires `completed`. The action validates the `report` input but does not publish a GitHub check or a GitLab note; it emits GitHub Actions annotations from the returned findings. The REST fallback likewise does not publish those external reports. Do not rely on `report` to deliver a GitHub check, GitLab note or Markdown report in this version.
 
 ## CLI example from the documentation
 
@@ -70,7 +68,7 @@ jobs:
           GUARANI_TOKEN: ${{ secrets.GUARANI_TOKEN }}
 ```
 
-The current reference CLI prints the GitHub Checks API request bodies for `--report github`; it does not itself post a check. See the [official documentation](https://guarani-llc.com/en/docs#github-actions) and your workspace's available implementation.
+See the [official documentation](https://guarani-llc.com/en/docs#github-actions) and your workspace's available implementation.
 
 Example configuration from the [documentation](https://guarani-llc.com/en/docs#configuration):
 
