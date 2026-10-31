@@ -1,0 +1,72 @@
+name: Production API contract
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: production-api-contract
+  cancel-in-progress: false
+
+jobs:
+  contract:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-26.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+      - name: Verify provisioned CI token
+        env:
+          GUARANI_TOKEN: ${{ secrets.GUARANI_TOKEN }}
+        run: test -n "$GUARANI_TOKEN"
+      - name: Run released Action v1.0.2 against the public API
+        id: verify
+        uses: guarani-llc/guarani-verify-action@60f27d8491efb308eaedd5ab67f4049110659363 # v1.0.2
+        with:
+          token: ${{ secrets.GUARANI_TOKEN }}
+          repo: ${{ github.repository }}
+          ref: ${{ github.sha }}
+          profile: pull-request
+          api_url: https://api.guarani-llc.com/v1
+      - name: Validate stored result and CI fixture disclosure
+        env:
+          GUARANI_TOKEN: ${{ secrets.GUARANI_TOKEN }}
+          VERIFICATION_ID: ${{ steps.verify.outputs.id }}
+          VERDICT: ${{ steps.verify.outputs.verdict }}
+          FINDINGS_COUNT: ${{ steps.verify.outputs.findings_count }}
+        run: |
+          node --input-type=module - <<'JS'
+          import assert from 'node:assert/strict';
+          import { appendFileSync } from 'node:fs';
+          const id = process.env.VERIFICATION_ID;
+          assert.match(id || '', /^ver_[0-9A-Z]{12}$/);
+          assert.equal(process.env.VERDICT, 'CLEARED');
+          assert.equal(process.env.FINDINGS_COUNT, '0');
+          const response = await fetch(`https://api.guarani-llc.com/v1/verifications/${id}`, {
+            headers: { Authorization: `Bearer ${process.env.GUARANI_TOKEN}`, Accept: 'application/json' },
+            redirect: 'error', signal: AbortSignal.timeout(30000),
+          });
+          assert.equal(response.status, 200);
+          const result = await response.json();
+          assert.equal(result.id, id);
+          assert.equal(result.repo, process.env.GITHUB_REPOSITORY);
+          assert.equal(result.ref, process.env.GITHUB_SHA);
+          assert.equal(result.profile, 'pull-request');
+          assert.equal(result.status, 'completed');
+          assert.equal(result.verdict, 'CLEARED');
+          assert.deepEqual(result.findings, []);
+          assert.equal(result.execution_mode, 'ci_contract_fixture');
+          assert.equal(result.analysis_performed, false);
+          const message = `Production integration contract passed: ${id}. CI fixture only; no code analysis was performed.`;
+          console.log(message);
+          appendFileSync(process.env.GITHUB_STEP_SUMMARY, `${message}\n`);
+          JS

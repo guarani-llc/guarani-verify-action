@@ -7,6 +7,23 @@ Guarani Verify applies versioned policy rules to verification findings and retur
 
 **Guarani AI is in private beta.** The official Private Beta clients are published on npm as [@guarani-ai/cli](https://www.npmjs.com/package/@guarani-ai/cli) and [@guarani-ai/sdk](https://www.npmjs.com/package/@guarani-ai/sdk), and on PyPI as [guarani-ai](https://pypi.org/project/guarani-ai/). Remote execution at [https://api.guarani-llc.com/v1](https://api.guarani-llc.com/v1) requires a `GUARANI_TOKEN` issued to a provisioned Private Beta workspace. Installing a client does not provision service access. This action fails if it cannot obtain a valid verification result.
 
+## Official interfaces and status
+
+- [Guarani AI website](https://guarani-llc.com/en/) and [documentation](https://guarani-llc.com/en/docs)
+- [Guarani Verify on GitHub Marketplace, v1.0.2](https://github.com/marketplace/actions/guarani-verify-ai-security-pr-review)
+- [OpenSSF Best Practices Passing](https://www.bestpractices.dev/en/projects/16112)
+- [npm CLI: @guarani-ai/cli](https://www.npmjs.com/package/@guarani-ai/cli)
+- [npm SDK: @guarani-ai/sdk](https://www.npmjs.com/package/@guarani-ai/sdk)
+- [PyPI: guarani-ai](https://pypi.org/project/guarani-ai/)
+- [OpenAPI 3.1 specification](https://guarani-llc.com/openapi.json)
+- [System status](https://status.guarani-llc.com) and [status JSON](https://status.guarani-llc.com/status.json)
+
+The production contract workflow uses the organization's provisioned CI token
+against the public API. Its deterministic `CLEARED` fixture verifies client
+integration only. The result explicitly includes
+`execution_mode: ci_contract_fixture` and `analysis_performed: false`; it is
+not a code analysis or security approval.
+
 ## GitHub Action
 
 Install [Guarani Verify Action v1.0.2 from GitHub Marketplace](https://github.com/marketplace/actions/guarani-verify-ai-security-pr-review).
