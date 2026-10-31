@@ -112,4 +112,4 @@ The configuration above is sample data and must be adapted to your workspace.
 
 ## Support
 
-See [Guarani AI documentation](https://guarani-llc.com/en/docs) or contact sylvain@guarani-llc.com.
+See [Guarani AI documentation](https://guarani-llc.com/en/docs) or contact sylvain@guarani-llc.com. Report bugs and request features through [GitHub Issues](https://github.com/guarani-llc/guarani-verify-action/issues). See the [contribution guidelines](https://github.com/guarani-llc/.github/blob/main/CONTRIBUTING.md) for the pull request process, and the [security policy](https://github.com/guarani-llc/.github/blob/main/SECURITY.md) for private vulnerability reports.
