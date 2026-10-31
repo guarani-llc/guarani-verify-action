@@ -1,5 +1,8 @@
 # Guarani Verify: AI code review and security verification
 
+[![OpenSSF Best Practices](https://www.bestpractices.dev/projects/16112/badge)](https://www.bestpractices.dev/projects/16112)
+[![Test](https://github.com/guarani-llc/guarani-verify-action/actions/workflows/test.yml/badge.svg)](https://github.com/guarani-llc/guarani-verify-action/actions/workflows/test.yml)
+
 Guarani Verify applies versioned policy rules to verification findings and returns `CLEARED` or `HOLD`. The same findings and policy produce the same verdict.
 
 **Guarani AI is in private beta. Access tokens (GUARANI_TOKEN) are issued to provisioned workspaces.** The CLI, SDKs and hosted API are not publicly available yet. Access to a provisioned workspace and the relevant private beta services is required. This action fails if it cannot obtain a valid verification result.
