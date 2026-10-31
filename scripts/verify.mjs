@@ -1,6 +1,14 @@
 import { appendFileSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { setTimeout as delay } from 'node:timers/promises';
+import tls from 'node:tls';
+import https from 'node:https';
+import http from 'node:http';
+
+const TLS_MIN_VERSION = 'TLSv1.2';
+const TLS_CIPHERS = 'DEFAULT@SECLEVEL=2';
+tls.DEFAULT_MIN_VERSION = TLS_MIN_VERSION;
+tls.DEFAULT_CIPHERS = TLS_CIPHERS;
 
 const MAX_RESPONSE = 8 * 1024 * 1024;
 const POLL_TIMEOUT = 10 * 60 * 1000;
@@ -48,17 +56,46 @@ function validateResult(result, input, id) {
   return result;
 }
 
-function cliAvailable() {
-  const probe = spawnSync('guarani', ['--help'], { stdio: 'ignore', timeout: 10_000, windowsHide: true });
+function secureCliEnv() {
+  // Match Node's NODE_OPTIONS quoting rules, then rebuild complete arguments.
+  const args = [];
+  let quoted = false, newArg = true;
+  const raw = env.NODE_OPTIONS ?? '';
+  for (let i = 0; i < raw.length; i++) {
+    let c = raw[i];
+    if (c === '\\' && quoted) {
+      if (++i === raw.length) fail('Invalid NODE_OPTIONS quoting.');
+      c = raw[i];
+    } else if (c === ' ' && !quoted) { newArg = true; continue; }
+    else if (c === '"') { quoted = !quoted; continue; }
+    if (newArg) { args.push(c); newArg = false; }
+    else args[args.length - 1] += c;
+  }
+  if (quoted) fail('Invalid NODE_OPTIONS quoting.');
+  const kept = [];
+  for (let i = 0; i < args.length; i++) {
+    const flag = args[i].split('=')[0].replaceAll('_', '-');
+    if (/^--(?:no-)?tls-/.test(flag)) {
+      if (['--tls-cipher-list', '--tls-keylog'].includes(flag) && !args[i].includes('=')) i++;
+      continue;
+    }
+    kept.push('"' + args[i].replaceAll('\\', '\\\\').replaceAll('"', '\\"') + '"');
+  }
+  return { ...env, NODE_TLS_REJECT_UNAUTHORIZED: '1',
+    NODE_OPTIONS: [...kept, '--tls-min-v1.2', `--tls-cipher-list=${TLS_CIPHERS}`].join(' ') };
+}
+
+function cliAvailable(childEnv) {
+  const probe = spawnSync('guarani', ['--help'], { stdio: 'ignore', timeout: 10_000, windowsHide: true, env: childEnv });
   return !probe.error || probe.error.code !== 'ENOENT';
 }
 
-function runCli(input) {
+function runCli(input, childEnv) {
   // The reference CLI prioritizes --report over --json, so --report would hide
   // the full result, including its id and findings. Request JSON once instead.
   const p = spawnSync('guarani', ['verify', '--repo', input.repo, '--ref', input.ref, '--profile', input.profile, '--json'], {
     encoding: 'utf8', maxBuffer: MAX_RESPONSE, timeout: POLL_TIMEOUT + 30_000, windowsHide: true,
-    env: { ...env, GUARANI_TOKEN: input.token, GUARANI_BASE_URL: input.url },
+    env: { ...childEnv, GUARANI_TOKEN: input.token, GUARANI_BASE_URL: input.url },
   });
   if (p.error || ![0, 1].includes(p.status)) fail('Guarani CLI failed to complete the verification.');
   let result;
@@ -74,7 +111,7 @@ function runCli(input) {
 async function responseJson(response) {
   let size = 0;
   const chunks = [];
-  for await (const chunk of response.body ?? []) {
+  for await (const chunk of response) {
     size += chunk.byteLength;
     if (size > MAX_RESPONSE) fail('API response is too large.');
     chunks.push(Buffer.from(chunk));
@@ -82,26 +119,41 @@ async function responseJson(response) {
   try { return JSON.parse(Buffer.concat(chunks).toString('utf8')); } catch { fail('API returned invalid JSON.'); }
 }
 
+function requestOnce(input, path, options) {
+  const url = new URL(`${input.url}${path}`);
+  const transport = url.protocol === 'https:' ? https : http;
+  return new Promise((resolve, reject) => {
+    // Native requests never follow redirects. The signal covers the handshake,
+    // response headers and streamed body, including a peer that stops sending.
+    const req = transport.request(url, {
+      method: options.method ?? 'GET',
+      signal: AbortSignal.timeout(30_000),
+      minVersion: TLS_MIN_VERSION, ciphers: TLS_CIPHERS, rejectUnauthorized: true,
+      headers: { authorization: `Bearer ${input.token}`, accept: 'application/json',
+        ...options.headers, ...(options.body === undefined ? {} : { 'content-length': Buffer.byteLength(options.body) }) },
+    }, resolve);
+    req.on('error', () => reject(new Error('Verification API network request failed.')));
+    req.end(options.body);
+  });
+}
+
 async function request(input, path, options = {}) {
   for (let attempt = 0; attempt < 3; attempt++) {
     let response;
     try {
-      response = await fetch(`${input.url}${path}`, {
-        ...options, redirect: 'manual', signal: AbortSignal.timeout(30_000),
-        headers: { authorization: `Bearer ${input.token}`, accept: 'application/json', ...options.headers },
-      });
+      response = await requestOnce(input, path, options);
     } catch {
       if (attempt === 2) fail('Verification API network request failed.');
       await delay(Math.floor(Math.random() * (250 * 2 ** attempt)));
       continue;
     }
-    if (response.ok) return responseJson(response);
-    if (![429, 502, 503, 504].includes(response.status) || attempt === 2) fail(`Verification API returned HTTP ${response.status}.`);
-    const retryAfter = response.headers.get('retry-after');
+    if (response.statusCode >= 200 && response.statusCode < 300) return responseJson(response);
+    response.destroy();
+    if (![429, 502, 503, 504].includes(response.statusCode) || attempt === 2) fail(`Verification API returned HTTP ${response.statusCode}.`);
+    const retryAfter = response.headers['retry-after'];
     let wait = Math.floor(Math.random() * (250 * 2 ** attempt));
     if (retryAfter && /^\d+(?:\.\d+)?$/.test(retryAfter)) wait = Math.min(Number(retryAfter) * 1000, 60_000);
     else if (retryAfter && !Number.isNaN(Date.parse(retryAfter))) wait = Math.min(Math.max(Date.parse(retryAfter) - Date.now(), 0), 60_000);
-    await response.body?.cancel();
     await delay(wait);
   }
   fail('Verification API network request failed.');
@@ -151,8 +203,10 @@ function annotate(result) {
 }
 
 async function main() {
+  if (env.NODE_TLS_REJECT_UNAUTHORIZED === '0') fail('TLS certificate verification must not be disabled.');
   const input = validateInputs();
-  const result = cliAvailable() ? runCli(input) : await runRest(input);
+  const childEnv = secureCliEnv();
+  const result = cliAvailable(childEnv) ? runCli(input, childEnv) : await runRest(input);
   annotate(result);
   appendFileSync(required('GITHUB_OUTPUT'), `id=${result.id}\nverdict=${result.verdict}\nfindings_count=${result.findings.length}\n`, 'utf8');
   console.log(`Guarani Verify: ${result.verdict}; findings: ${result.findings.length}`);

@@ -22,7 +22,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: guarani-llc/guarani-verify-action@v1.0.1
+      - uses: guarani-llc/guarani-verify-action@v1.0.2
         with:
           token: ${{ secrets.GUARANI_TOKEN }}
           profile: pull-request
@@ -40,6 +40,10 @@ The action uses an installed `guarani` CLI when available and otherwise calls th
 | `api_url` | No | `https://api.guarani-llc.com/v1` | REST API base URL. |
 
 Outputs are `id`, `verdict` and `findings_count` after a completed verification. The token is sent to the configured API URL. HTTPS is required except for a local reference server.
+
+REST requests require TLS 1.2 or later, OpenSSL security level 2 and valid server certificates. The action refuses to run with `NODE_TLS_REJECT_UNAUTHORIZED=0`. Both CLI invocations receive these TLS defaults through `NODE_OPTIONS` and certificate verification is enabled. Install only a trusted Node.js CLI that uses the standard TLS defaults; an external executable can override its own environment or connection options. Local HTTP is available only when explicitly selecting a loopback API URL for testing.
+
+Run the tests with `node --test`. The HTTPS tests use the `openssl` command to create temporary certificates and check that weak keys, old protocols and invalid certificates are rejected before credentials reach the server.
 
 ## CLI example from the documentation
 
