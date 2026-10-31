@@ -1,13 +1,15 @@
 # Guarani Verify: AI code review and security verification
 
-[![OpenSSF Best Practices](https://www.bestpractices.dev/projects/16112/badge)](https://www.bestpractices.dev/projects/16112)
+[![OpenSSF Best Practices](https://www.bestpractices.dev/projects/16112/badge)](https://www.bestpractices.dev/en/projects/16112)
 [![Test](https://github.com/guarani-llc/guarani-verify-action/actions/workflows/test.yml/badge.svg)](https://github.com/guarani-llc/guarani-verify-action/actions/workflows/test.yml)
 
 Guarani Verify applies versioned policy rules to verification findings and returns `CLEARED` or `HOLD`. The same findings and policy produce the same verdict.
 
-**Guarani AI is in private beta. Access tokens (GUARANI_TOKEN) are issued to provisioned workspaces.** The CLI, SDKs and hosted API are not publicly available yet. Access to a provisioned workspace and the relevant private beta services is required. This action fails if it cannot obtain a valid verification result.
+**Guarani AI is in private beta.** The official Private Beta clients are published on npm as [@guarani-ai/cli](https://www.npmjs.com/package/@guarani-ai/cli) and [@guarani-ai/sdk](https://www.npmjs.com/package/@guarani-ai/sdk), and on PyPI as [guarani-ai](https://pypi.org/project/guarani-ai/). Remote execution at [https://api.guarani-llc.com/v1](https://api.guarani-llc.com/v1) requires a `GUARANI_TOKEN` issued to a provisioned Private Beta workspace. Installing a client does not provision service access. This action fails if it cannot obtain a valid verification result.
 
 ## GitHub Action
+
+Install [Guarani Verify Action v1.0.2 from GitHub Marketplace](https://github.com/marketplace/actions/guarani-verify-ai-security-pr-review).
 
 Create `guarani.yml` at the repository root and store your workspace token in the `GUARANI_TOKEN` repository secret. For example:
 
@@ -50,7 +52,7 @@ Run the tests with `node --test`. The HTTPS tests use the `openssl` command to c
 
 ## CLI example from the documentation
 
-The following is the documented CLI workflow. It requires Node.js 20 or later and an available private beta CLI package.
+The following is the documented CLI workflow. It requires Node.js 20 or later, the published Private Beta CLI package and a provisioned workspace token.
 
 ```yaml
 name: guarani
@@ -69,7 +71,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 20
-      - run: npm i -g @guarani-ai/cli
+      - run: npm i -g @guarani-ai/cli@0.1.0-beta.1
       - run: guarani verify --profile pull-request --report github
         env:
           GUARANI_TOKEN: ${{ secrets.GUARANI_TOKEN }}
