@@ -1,0 +1,58 @@
+name: Test
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Test validation and error paths
+        run: node --test tests/verify.test.mjs
+      - name: Start sample API
+        shell: bash
+        run: |
+          set -euo pipefail
+          if command -v guarani >/dev/null; then
+            echo 'Unexpected Guarani CLI on the test runner' >&2
+            exit 1
+          fi
+          node tests/mock-server.mjs > "$RUNNER_TEMP/guarani-mock.log" 2>&1 &
+          echo "$!" > "$RUNNER_TEMP/guarani-mock.pid"
+          for attempt in {1..30}; do
+            if curl -s -o /dev/null http://127.0.0.1:18781/v1/ready; then
+              exit 0
+            fi
+            sleep 0.1
+          done
+          cat "$RUNNER_TEMP/guarani-mock.log" >&2
+          exit 1
+      - name: Exercise the composite action against the sample API
+        id: verify
+        uses: ./
+        with:
+          token: synthetic-test-token
+          profile: pull-request
+          api_url: http://127.0.0.1:18781/v1
+      - name: Verify action outputs
+        shell: bash
+        env:
+          RUN_ID: ${{ steps.verify.outputs.id }}
+          VERDICT: ${{ steps.verify.outputs.verdict }}
+          FINDINGS_COUNT: ${{ steps.verify.outputs.findings_count }}
+        run: |
+          set -euo pipefail
+          test "$RUN_ID" = 'ver_01JB7Q4M2XK8'
+          test "$VERDICT" = 'CLEARED'
+          test "$FINDINGS_COUNT" = '0'
+      - name: Stop sample API
+        if: always()
+        shell: bash
+        run: |
+          if [ -f "$RUNNER_TEMP/guarani-mock.pid" ]; then
+            kill "$(cat "$RUNNER_TEMP/guarani-mock.pid")" || true
+          fi

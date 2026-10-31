@@ -1,66 +1,117 @@
-# Guarani Verify — Autonomous Multi-Agent PR Code & Security Review Action
+# Guarani Verify: AI code review and security verification
 
-Official GitHub Action for **[Guarani Verify](https://guarani-llc.com/en/)**, built by **Guarani AI (GUARANI LLC)**.
+Guarani Verify applies versioned policy rules to verification findings and returns `CLEARED` or `HOLD`. The same findings and policy produce the same verdict.
 
-Guarani Verify runs autonomous multi-agent pull-request reviews, static/semantic security vulnerability detection (SAST/secrets/injection patterns), and architecture compliance checks powered by the **Guarani Mesh** enterprise LLM gateway.
+**Guarani AI is in private beta. Access tokens (GUARANI_TOKEN) are issued to provisioned workspaces.** The CLI, SDKs and hosted API are not publicly available yet. Access to a provisioned workspace and the relevant private beta services is required. This action fails if it cannot obtain a valid verification result.
 
----
+## GitHub Action
 
-## Features
-
-- **Autonomous Multi-Agent PR Triage**: Analyzes pull-request diffs across security, memory safety, authentication flows, and architectural boundaries.
-- **Zero-Retention Enterprise Gateway**: Routed through **Guarani Mesh** with context caching and strict tenant isolation.
-- **Inline PR Annotations**: Posts actionable remediation diffs directly on pull requests and blocks merges when findings exceed your `severity_threshold`.
-
----
-
-## Quick Start
-
-Add the following workflow to `.github/workflows/guarani-verify.yml`:
+Create `guarani.yml` at the repository root and store your workspace token in the `GUARANI_TOKEN` repository secret. For example:
 
 ```yaml
-name: Guarani Verify PR Security Audit
-
-on:
-  pull_request:
-    types: [opened, synchronize, reopened]
+name: guarani
+on: pull_request
 
 permissions:
   contents: read
+  checks: write
   pull-requests: write
 
 jobs:
-  guarani-verify:
+  verify:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+      - uses: guarani-llc/guarani-verify-action@v1.0.1
         with:
-          fetch-depth: 0
-
-      - name: Run Guarani Verify AI Security & PR Review
-        uses: guarani-llc/guarani-verify-action@v1.0.0
-        with:
-          guarani_api_key: ${{ secrets.GUARANI_API_KEY }}
-          severity_threshold: 'high'
+          token: ${{ secrets.GUARANI_TOKEN }}
+          profile: pull-request
 ```
 
----
-
-## Inputs
+The action uses an installed `guarani` CLI when available and otherwise calls the REST API. `CLEARED` exits 0 and `HOLD` exits 1. Missing credentials, service errors, invalid results, failed runs and timeouts fail the step without reporting a verdict. Findings returned by the service are emitted as GitHub Actions annotations.
 
 | Input | Required | Default | Description |
-|-------|----------|---------|-------------|
-| `guarani_api_key` | **Yes** | — | Your Guarani AI API key (`https://guarani-llc.com/en/`) |
-| `api_base_url` | No | `https://api.guarani-llc.com/v1` | Guarani Mesh OpenAI-compatible gateway URL |
-| `model` | No | `guarani-verify-pro` | Verification model routed via Guarani Mesh |
-| `severity_threshold` | No | `high` | Minimum finding severity to fail the workflow (`low`, `medium`, `high`, `critical`) |
-| `github_token` | No | `${{ github.token }}` | Token used to read PR diffs and post review comments |
+| --- | --- | --- | --- |
+| `token` | Yes | | Workspace access token (`GUARANI_TOKEN`). |
+| `profile` | No | `pull-request` | Profile defined in `guarani.yml`. |
+| `repo` | No | `${{ github.repository }}` | Repository in `owner/name` format. |
+| `ref` | No | `${{ github.ref }}` | Git ref to verify. |
+| `report` | No | `github` | Requested report target: `github`, `gitlab` or `markdown`. See compatibility note below. |
+| `api_url` | No | `https://api.guarani-llc.com/v1` | REST API base URL. |
 
----
+Outputs are `id`, `verdict` and `findings_count` after a completed verification. The token is sent to the configured API URL. HTTPS is required except for a local reference server.
 
-## About Guarani AI (GUARANI LLC)
+**Report compatibility:** the current reference CLI gives `--report` precedence over `--json`, so `--report ... --json` does not return the full verification object needed for the action outputs. This action invokes the CLI with `--json` without `--report` and supplies the selected `ref` and API URL. The reference CLI waits for completion before emitting JSON and does not include a `status` field in that JSON. If a CLI result includes `status`, this action requires `completed`. The action validates the `report` input but does not publish a GitHub check or a GitLab note; it emits GitHub Actions annotations from the returned findings. The REST fallback likewise does not publish those external reports. Do not rely on `report` to deliver a GitHub check, GitLab note or Markdown report in this version.
 
-- **Website**: [https://guarani-llc.com/en/](https://guarani-llc.com/en/)
-- **GitHub Organization**: [https://github.com/guarani-llc](https://github.com/guarani-llc)
-- **Support & Enterprise Onboarding**: `sylvain@guarani-llc.com`
+## CLI example from the documentation
+
+The following is the documented CLI workflow. It requires Node.js 20 or later and an available private beta CLI package.
+
+```yaml
+name: guarani
+on: pull_request
+
+permissions:
+  contents: read
+  checks: write
+  pull-requests: write
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - run: npm i -g @guarani-ai/cli
+      - run: guarani verify --profile pull-request --report github
+        env:
+          GUARANI_TOKEN: ${{ secrets.GUARANI_TOKEN }}
+```
+
+The current reference CLI prints the GitHub Checks API request bodies for `--report github`; it does not itself post a check. See the [official documentation](https://guarani-llc.com/en/docs#github-actions) and your workspace's available implementation.
+
+Example configuration from the [documentation](https://guarani-llc.com/en/docs#configuration):
+
+```yaml
+# guarani.yml
+version: 1
+project: acme/core-api
+
+profiles:
+  pull-request:
+    checks: [architecture, contracts, performance, security]
+    tests: generate-missing
+    hold_on: [blocking]
+  release:
+    checks: [architecture, contracts, performance, security, tests]
+    mobile: checkout
+    hold_on: [blocking, flaky-device]
+
+budgets:
+  latency_p95_ms: 450
+  memory_mb: 512
+
+mesh:
+  policy: balanced  # latency | balanced | cost
+  providers: [azure-openai, amazon-bedrock, google-gemini-enterprise, gpu-open-weight]
+  residency: us     # us | eu
+  daily_budget_usd:
+    payments: 66
+    search: 60
+
+mobile:
+  suites:
+    checkout:
+      framework: maestro
+      path: e2e/checkout
+  devices: [pixel-10, iphone-17, galaxy-s25]
+  retries: 1
+```
+
+The configuration above is sample data and must be adapted to your workspace.
+
+## Support
+
+See [Guarani AI documentation](https://guarani-llc.com/en/docs) or contact sylvain@guarani-llc.com.

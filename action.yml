@@ -1,64 +1,54 @@
 name: 'Guarani Verify AI Security & PR Review'
 author: 'Guarani AI (GUARANI LLC)'
-description: 'Autonomous multi-agent PR code review, security vulnerability scan, and architecture compliance.'
+description: 'Run Guarani Verify for a repository and report its policy verdict.'
 branding:
   icon: 'shield'
   color: 'blue'
-
 inputs:
-  guarani_api_key:
-    description: 'API key for Guarani Mesh / Guarani Verify endpoint'
+  token:
+    description: 'Workspace access token (GUARANI_TOKEN) issued to your Guarani AI workspace.'
     required: true
-  api_base_url:
-    description: 'Guarani Mesh OpenAI-compatible gateway URL'
+  profile:
+    description: 'Profile defined in guarani.yml, for example pull-request or release.'
+    required: false
+    default: 'pull-request'
+  repo:
+    description: 'Repository to verify in owner/name format.'
+    required: false
+    default: ${{ github.repository }}
+  ref:
+    description: 'Git ref to verify, for example refs/pull/1842/head.'
+    required: false
+    default: ${{ github.ref }}
+  report:
+    description: 'Report target: github, gitlab, or markdown.'
+    required: false
+    default: 'github'
+  api_url:
+    description: 'Guarani AI REST API base URL.'
     required: false
     default: 'https://api.guarani-llc.com/v1'
-  model:
-    description: 'Verification model identifier routed via Guarani Mesh'
-    required: false
-    default: 'guarani-verify-pro'
-  severity_threshold:
-    description: 'Minimum severity to fail the PR check (low, medium, high, critical)'
-    required: false
-    default: 'high'
-  github_token:
-    description: 'GitHub token used to fetch PR diffs and post inline review comments'
-    required: false
-    default: ${{ github.token }}
-
 outputs:
-  status:
-    description: 'Verification result status (passed or failed)'
-    value: ${{ steps.verify.outputs.status }}
+  id:
+    description: 'Verification run ID, for example ver_01JB7Q4M2XK8.'
+    value: ${{ steps.verify.outputs.id }}
+  verdict:
+    description: 'Final release verdict returned by policy rules: CLEARED or HOLD.'
+    value: ${{ steps.verify.outputs.verdict }}
   findings_count:
-    description: 'Total number of security or architectural findings detected'
+    description: 'Number of findings returned by the verification run.'
     value: ${{ steps.verify.outputs.findings_count }}
-
 runs:
   using: 'composite'
   steps:
-    - name: Run Guarani Verify Multi-Agent PR Scan
+    - name: Run Guarani Verify
       id: verify
       shell: bash
       env:
-        GUARANI_API_KEY: ${{ inputs.guarani_api_key }}
-        GUARANI_API_BASE: ${{ inputs.api_base_url }}
-        GUARANI_MODEL: ${{ inputs.model }}
-        SEVERITY_THRESHOLD: ${{ inputs.severity_threshold }}
-        GITHUB_TOKEN: ${{ inputs.github_token }}
-      run: |
-        set -euo pipefail
-        echo "::group::Guarani Verify - Initializing Autonomous PR Security Audit"
-        echo "Target Repository: ${GITHUB_REPOSITORY}"
-        echo "Event: ${GITHUB_EVENT_NAME} (Ref: ${GITHUB_REF_NAME})"
-        echo "Gateway: ${GUARANI_API_BASE} | Model: ${GUARANI_MODEL} | Threshold: ${SEVERITY_THRESHOLD}"
-        echo "::endgroup::"
-
-        if [ -z "${GUARANI_API_KEY}" ]; then
-          echo "::error::Missing required input: guarani_api_key. Get your key at https://guarani-llc.com/en/"
-          exit 1
-        fi
-
-        echo "status=passed" >> "$GITHUB_OUTPUT"
-        echo "findings_count=0" >> "$GITHUB_OUTPUT"
-        echo "Guarani Verify check initialized successfully."
+        GUARANI_TOKEN: ${{ inputs.token }}
+        INPUT_PROFILE: ${{ inputs.profile }}
+        INPUT_REPO: ${{ inputs.repo }}
+        INPUT_REF: ${{ inputs.ref }}
+        INPUT_REPORT: ${{ inputs.report }}
+        INPUT_API_URL: ${{ inputs.api_url }}
+      run: node "$GITHUB_ACTION_PATH/scripts/verify.mjs"
